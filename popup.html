@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'" />
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: transparent; -webkit-user-select: none; user-select: none;
+  }
+  .card {
+    background: #16181d; color: #f2f3f5; border: 1px solid #2a2e37;
+    border-radius: 18px; padding: 18px; height: 250px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    box-shadow: 0 8px 30px rgba(0,0,0,.45);
+  }
+  .emoji { font-size: 34px; }
+  h1 { font-size: 17px; margin-top: 6px; }
+  p  { font-size: 13px; color: #9aa0ac; margin-top: 6px; line-height: 1.4; }
+  .row { display: flex; gap: 8px; }
+  button {
+    flex: 1; border: 0; border-radius: 12px; padding: 11px 6px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    background: #262a33; color: #f2f3f5;
+  }
+  button:hover { background: #313642; }
+  button.primary { background: #6c8cff; color: #0b0d12; }
+  button.primary:hover { background: #8aa3ff; }
+  .big button { font-size: 28px; padding: 14px 0; }
+  .timer { font-size: 46px; font-weight: 700; text-align: center; font-variant-numeric: tabular-nums; }
+  .center { text-align: center; }
+</style>
+</head>
+<body>
+<div class="card" id="card">Loading…</div>
+<script>
+(() => {
+  const ACTIVITIES = {
+    walk_2min:         { emoji: "🚶", title: "Take a 2-minute walk",    tip: "Anywhere works. Hallway laps count." },
+    look_away_20s:     { emoji: "👀", title: "Look away for 20 seconds", tip: "Find something far away and let your eyes relax." },
+    calming_music:     { emoji: "🎧", title: "Put on one calm song",     tip: "Close your eyes if you can." },
+    stretch_90s:       { emoji: "🙆", title: "Stretch for 90 seconds",   tip: "Shoulders, neck, wrists. Slowly." },
+    water_and_breathe: { emoji: "💧", title: "Water and 5 deep breaths", tip: "Slow in through the nose, slow out." },
+  };
+  const FEELINGS = [["😮‍💨", 1], ["😐", 2], ["⚡", 3]];
+
+  const card = document.getElementById("card");
+  window.addEventListener("error", (e) => { card.textContent = "Error: " + e.message; });
+if (!window.nudge) card.textContent = "preload failed: window.nudge is missing";
+  let nudge = null;
+  let energyBefore = null;
+  let timerId = null;
+
+  const send = (outcome, energyAfter = null) =>
+    window.nudge.feedback({
+      nudgeId: nudge.nudge_id, outcome, energyBefore, energyAfter,
+    });
+
+  function feelingButtons(onPick) {
+    const row = document.createElement("div");
+    row.className = "row big";
+    for (const [emoji, value] of FEELINGS) {
+      const b = document.createElement("button");
+      b.textContent = emoji;
+      b.onclick = () => onPick(value);
+      row.appendChild(b);
+    }
+    return row;
+  }
+
+  function render(html, extra) {
+    card.innerHTML = html;
+    if (extra) extra(card);
+  }
+
+  // ---- Stage 1: the suggestion ----
+  function stageSuggest() {
+    const a = ACTIVITIES[nudge.intervention] || { emoji: "✨", title: "Take a short break", tip: "" };
+    render(
+      `<div>
+         <div class="emoji">${a.emoji}</div>
+         <h1>${a.title}</h1>
+         <p>${a.tip}<br/><span style="opacity:.7">Because: ${nudge.why}</span></p>
+       </div>
+       <div class="row">
+         <button class="primary" id="go">Start</button>
+         <button id="later">Later</button>
+         <button id="skip">Skip</button>
+       </div>`,
+      () => {
+        document.getElementById("go").onclick = () =>
+          energyBefore === null ? stageBefore() : stageTimer();
+        document.getElementById("later").onclick = () => { send("snoozed"); window.nudge.close(); };
+        document.getElementById("skip").onclick  = () => { send("dismissed"); window.nudge.close(); };
+      }
+    );
+  }
+
+  // ---- Stage 2 (only if we don't know their energy yet) ----
+  function stageBefore() {
+    render(`<div><h1>Quick one: how are you feeling right now?</h1><p>One tap. This is how NudgeOS learns what works for you.</p></div><div id="slot"></div>`,
+      () => {
+        document.getElementById("slot").appendChild(
+          feelingButtons((v) => { energyBefore = v; stageTimer(); })
+        );
+      });
+  }
+
+  // ---- Stage 3: the break itself ----
+  function stageTimer() {
+    let left = nudge.duration_s;
+    const a = ACTIVITIES[nudge.intervention] || { emoji: "✨", title: "Break" };
+    render(
+      `<div class="center"><div class="emoji">${a.emoji}</div><h1>${a.title}</h1></div>
+       <div class="timer" id="t"></div>
+       <div class="row"><button id="done">Done</button></div>`,
+      () => {
+        const tick = () => {
+          const m = Math.floor(left / 60), s = String(left % 60).padStart(2, "0");
+          document.getElementById("t").textContent = `${m}:${s}`;
+          if (left-- <= 0) { clearInterval(timerId); stageAfter(); }
+        };
+        tick();
+        timerId = setInterval(tick, 1000);
+        document.getElementById("done").onclick = () => { clearInterval(timerId); stageAfter(); };
+      }
+    );
+  }
+
+  // ---- Stage 4: the one-tap "did it help?" ----
+  function stageAfter() {
+    render(`<div><h1>How do you feel now?</h1><p>Be honest. A "meh" is useful data too.</p></div><div id="slot"></div>`,
+      () => {
+        document.getElementById("slot").appendChild(
+          feelingButtons((v) => {
+            send("taken", v);
+            render(`<div class="center" style="margin:auto"><div class="emoji">💙</div><h1>Logged. Back to it.</h1></div>`);
+            setTimeout(() => window.nudge.close(), 1500);
+          })
+        );
+      });
+  }
+
+  window.nudge.onShow((data) => {
+    nudge = data;
+    energyBefore = data.energy_before; // may be null -> we ask in stage 2
+    stageSuggest();
+  });
+})();
+</script>
+</body>
+</html>

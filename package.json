@@ -1,0 +1,18 @@
+{
+  "name": "nudgeos",
+  "version": "0.1.0",
+  "description": "NudgeOS activity tracker (metadata only, local-first)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "postinstall": "electron-rebuild -f -w better-sqlite3"
+  },
+  "dependencies": {
+    "active-win": "^8.2.1",
+    "better-sqlite3": "^11.0.0"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.6.0",
+    "electron": "^31.0.0"
+  }
+}
