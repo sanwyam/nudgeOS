@@ -50,6 +50,8 @@ def load_scoreboard(conn, bucket: str) -> dict:
     for iid, outcome, before, after in rows:
         wins, losses = board.get(iid, (0, 0))
         if outcome == "taken" and before is not None and after is not None:
+            if before >= 3:
+                continue  # already at max energy: can't improve, so it says nothing about the break
             if after > before:
                 wins += 1
             else:
